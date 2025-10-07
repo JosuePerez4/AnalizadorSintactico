@@ -26,5 +26,10 @@ public class AnalizerView {
         // Muestra el resultado del análisis
         System.out.println("Resultado del análisis sintáctico:");
         System.out.println(resultado);
+
+        // Muestra cada carácter del código fuente
+        System.out.println("Análisis carácter por carácter:");
+        SintaxisAnalizer analizador = new SintaxisAnalizer(codigo);
+        System.out.println(analizador.mostrarCaracterPorCaracter());
     }
 }
