@@ -2,139 +2,224 @@ import java.util.regex.*;
 import java.util.*;
 
 public class SintaxisAnalizer {
+    // Patrones para cada componente del lenguaje
+    private static final Pattern CLASE_PATTERN = Pattern.compile("(public\\s+)?class\\s+(\\w+)\\s*\\{");
+    private static final Pattern METODO_PATTERN = Pattern.compile("(public|private|protected)?\\s*(static)?\\s*([\\w<>\\[\\]]+)\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*\\{");
+    private static final Pattern VARIABLE_PATTERN = Pattern.compile("(?<!\\w)(public|private|protected)?\\s*([\\w\\[\\]]+(?:<[^>]+>)?)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=\\s*[^;]+)?;");
+    private static final Pattern IF_PATTERN = Pattern.compile("if\\s*\\(([^)]+)\\)\\s*\\{");
+    private static final Pattern ELSE_PATTERN = Pattern.compile("\\}\\s*else\\s*\\{");
+    private static final Pattern FOR_PATTERN = Pattern.compile("for\\s*\\(([^)]+)\\)\\s*\\{");
+    private static final Pattern WHILE_PATTERN = Pattern.compile("while\\s*\\(([^)]+)\\)\\s*\\{");
+
     private String codigoFuente;
+    private StringBuilder arbol;
+    private int indentacion;
 
     public SintaxisAnalizer(String codigoFuente) {
         this.codigoFuente = codigoFuente;
+        this.arbol = new StringBuilder();
+        this.indentacion = 0;
     }
 
-    public String mostrarCaracterPorCaracter () {
-        StringBuilder resultado = new StringBuilder();
-        for (int i = 0; i < codigoFuente.length(); i++) {
-            if (codigoFuente.charAt(i) !=' ') {
-                resultado.append("Caracter ").append(i).append(": ").append(codigoFuente.charAt(i)).append("\n");
-            }
-        }
-        return resultado.toString();
+    private void agregarNodo(String texto) {
+        arbol.append("  ".repeat(indentacion)).append(texto).append("\n");
     }
 
-    // Método para iniciar el análisis sintáctico
     public String analizar(String codigoFuente) {
         if (codigoFuente == null || codigoFuente.isEmpty()) {
             return "Error: El código fuente está vacío.";
         }
-        return analizarCodigo(codigoFuente);
+        
+        arbol = new StringBuilder("Árbol de derivación:\n");
+        agregarNodo("Programa");
+        indentacion++;
+        
+        // Analizar el tipo de programa
+        if (codigoFuente.contains("class")) {
+            analizarClase(codigoFuente);
+        } else if (codigoFuente.contains("(")) {
+            analizarMetodo(codigoFuente);
+        } else {
+            analizarDeclaraciones(codigoFuente);
+        }
+        
+        return arbol.toString();
     }
 
-    private String analizarCodigo(String codigoFuente) {
-        // Reglas básicas para clase, método y variables en Java
-        Pattern clasePattern = Pattern.compile("class\\s+(\\w+)\\s*\\{");
-        Pattern metodoPattern = Pattern.compile("(public|private|protected)?\\s*(static)?\\s*([\\w<>\\[\\]]+)\\s+(\\w+)\\s*\\(([^)]*)\\)\\s*\\{");
-        // Variable: tipo nombre [= valor]; (mejorado para evitar < y > como nombre)
-        Pattern variablePattern = Pattern.compile(
-            "(?<!\\w)(public|private|protected)?\\s*([\\w\\[\\]]+(?:<[^>]+>)?)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=\\s*[^;]+)?;"
-        );
-
-        Matcher claseMatcher = clasePattern.matcher(codigoFuente);
-        Matcher metodoMatcher = metodoPattern.matcher(codigoFuente);
-
-        StringBuilder arbol = new StringBuilder("Árbol de derivación:\n");
-
-        boolean esClase = false;
+    private void analizarClase(String codigo) {
+        Matcher claseMatcher = CLASE_PATTERN.matcher(codigo);
         if (claseMatcher.find()) {
-            esClase = true;
-            String nombreClase = claseMatcher.group(1);
-            arbol.append("Clase\n");
-            arbol.append(" └── NombreClase: ").append(nombreClase).append("\n");
+            agregarNodo("Clase");
+            indentacion++;
+            agregarNodo("Nombre: " + claseMatcher.group(2));
+            
+            // Analizar el cuerpo de la clase
+            String cuerpoClase = extraerBloque(codigo, claseMatcher.end());
+            analizarContenidoClase(cuerpoClase);
+            indentacion--;
         }
+    }
 
-        // Detectar atributos de clase (variables fuera de métodos)
-        List<String> atributos = new ArrayList<>();
-        // Extraer el bloque de la clase (entre { ... })
-        int claseInicio = codigoFuente.indexOf('{');
-        int claseFin = codigoFuente.lastIndexOf('}');
-        String cuerpoClase = (claseInicio >= 0 && claseFin > claseInicio) ? codigoFuente.substring(claseInicio + 1, claseFin) : codigoFuente;
-
-        // Buscar variables fuera de métodos (atributos)
-        Matcher atributoMatcher = variablePattern.matcher(cuerpoClase);
-        while (atributoMatcher.find()) {
-            String tipo = atributoMatcher.group(2);
-            String nombre = atributoMatcher.group(3);
-            String valor = atributoMatcher.group(4);
-            // Evitar variables dentro de métodos (muy básico: no dentro de llaves anidadas)
-            if (!estaDentroDeMetodo(cuerpoClase, atributoMatcher.start())) {
-                arbol.append("Atributo\n");
-                arbol.append(" ├── Tipo: ").append(tipo).append("\n");
-                arbol.append(" ├── Nombre: ").append(nombre).append("\n");
-                arbol.append(" └── Valor: ").append(valor != null ? valor.replaceFirst("=\\s*", "") : "Sin valor").append("\n");
-                atributos.add(nombre);
+    private void analizarContenidoClase(String cuerpoClase) {
+        // Analizar atributos
+        Matcher variableMatcher = VARIABLE_PATTERN.matcher(cuerpoClase);
+        boolean tieneAtributos = false;
+        while (variableMatcher.find()) {
+            if (!estaDentroDeMetodo(cuerpoClase, variableMatcher.start())) {
+                if (!tieneAtributos) {
+                    agregarNodo("Atributos");
+                    indentacion++;
+                    tieneAtributos = true;
+                }
+                analizarVariable(variableMatcher);
             }
         }
+        if (tieneAtributos) indentacion--;
 
-        List<String> metodos = new ArrayList<>();
-        // Buscar métodos y variables locales dentro de cada método
+        // Analizar métodos
+        Matcher metodoMatcher = METODO_PATTERN.matcher(cuerpoClase);
+        boolean tieneMetodos = false;
         while (metodoMatcher.find()) {
-            String tipo = metodoMatcher.group(3);
-            String nombreMetodo = metodoMatcher.group(4);
-            String parametros = metodoMatcher.group(5);
+            if (!tieneMetodos) {
+                agregarNodo("Métodos");
+                indentacion++;
+                tieneMetodos = true;
+            }
+            analizarMetodo(cuerpoClase.substring(metodoMatcher.start()));
+        }
+        if (tieneMetodos) indentacion--;
+    }
 
-            arbol.append("Método\n");
-            arbol.append(" ├── TipoRetorno: ").append(tipo).append("\n");
-            arbol.append(" ├── NombreMetodo: ").append(nombreMetodo).append("\n");
-            arbol.append(" └── Parámetros: ").append(parametros.isEmpty() ? "Sin parámetros" : parametros).append("\n");
-            metodos.add(nombreMetodo);
+    private void analizarMetodo(String codigo) {
+        Matcher metodoMatcher = METODO_PATTERN.matcher(codigo);
+        if (metodoMatcher.find()) {
+            agregarNodo("Método");
+            indentacion++;
+            agregarNodo("Tipo: " + metodoMatcher.group(3));
+            agregarNodo("Nombre: " + metodoMatcher.group(4));
+            agregarNodo("Parámetros: " + metodoMatcher.group(5));
+            
+            // Analizar cuerpo del método
+            String cuerpoMetodo = extraerBloque(codigo, metodoMatcher.end());
+            analizarContenidoMetodo(cuerpoMetodo);
+            indentacion--;
+        }
+    }
 
-            // Extraer el bloque del método
-            int metodoInicio = metodoMatcher.end();
-            int metodoFin = encontrarFinDeBloque(codigoFuente, metodoInicio - 1);
-            if (metodoFin > metodoInicio) {
-                String cuerpoMetodo = codigoFuente.substring(metodoInicio, metodoFin);
-                Matcher variableLocalMatcher = variablePattern.matcher(cuerpoMetodo);
-                while (variableLocalMatcher.find()) {
-                    String tipoVar = variableLocalMatcher.group(2);
-                    String nombreVar = variableLocalMatcher.group(3);
-                    String valorVar = variableLocalMatcher.group(4);
-                    arbol.append("  VariableLocal\n");
-                    arbol.append("   ├── Tipo: ").append(tipoVar).append("\n");
-                    arbol.append("   ├── Nombre: ").append(nombreVar).append("\n");
-                    arbol.append("   └── Valor: ").append(valorVar != null ? valorVar.replaceFirst("=\\s*", "") : "Sin valor").append("\n");
+    private void analizarContenidoMetodo(String cuerpoMetodo) {
+        // Analizar variables locales
+        analizarDeclaraciones(cuerpoMetodo);
+        
+        // Analizar estructuras de control
+        analizarEstructurasControl(cuerpoMetodo);
+    }
+
+    private void analizarDeclaraciones(String codigo) {
+        Matcher variableMatcher = VARIABLE_PATTERN.matcher(codigo);
+        boolean tieneVariables = false;
+        while (variableMatcher.find()) {
+            if (!tieneVariables) {
+                agregarNodo("Variables");
+                indentacion++;
+                tieneVariables = true;
+            }
+            analizarVariable(variableMatcher);
+        }
+        if (tieneVariables) indentacion--;
+    }
+
+    private void analizarVariable(Matcher matcher) {
+        agregarNodo("Variable");
+        indentacion++;
+        agregarNodo("Tipo: " + matcher.group(2));
+        agregarNodo("Nombre: " + matcher.group(3));
+        String valor = matcher.group(4);
+        agregarNodo("Valor: " + (valor != null ? valor.replaceFirst("=\\s*", "") : "Sin valor"));
+        indentacion--;
+    }
+
+    private void analizarEstructurasControl(String codigo) {
+        analizarIf(codigo);
+        analizarFor(codigo);
+        analizarWhile(codigo);
+    }
+
+    private void analizarIf(String codigo) {
+        Matcher ifMatcher = IF_PATTERN.matcher(codigo);
+        while (ifMatcher.find()) {
+            agregarNodo("If");
+            indentacion++;
+            agregarNodo("Condición: " + ifMatcher.group(1));
+            String bloqueIf = extraerBloque(codigo, ifMatcher.end());
+            analizarContenidoMetodo(bloqueIf);
+            
+            // Buscar else
+            int finIf = ifMatcher.end() + bloqueIf.length();
+            Matcher elseMatcher = ELSE_PATTERN.matcher(codigo.substring(finIf));
+            if (elseMatcher.find()) {
+                agregarNodo("Else");
+                indentacion++;
+                String bloqueElse = extraerBloque(codigo, finIf + elseMatcher.end());
+                analizarContenidoMetodo(bloqueElse);
+                indentacion--;
+            }
+            indentacion--;
+        }
+    }
+
+    private void analizarFor(String codigo) {
+        Matcher forMatcher = FOR_PATTERN.matcher(codigo);
+        while (forMatcher.find()) {
+            agregarNodo("For");
+            indentacion++;
+            agregarNodo("Condición: " + forMatcher.group(1));
+            String bloqueFor = extraerBloque(codigo, forMatcher.end());
+            analizarContenidoMetodo(bloqueFor);
+            indentacion--;
+        }
+    }
+
+    private void analizarWhile(String codigo) {
+        Matcher whileMatcher = WHILE_PATTERN.matcher(codigo);
+        while (whileMatcher.find()) {
+            agregarNodo("While");
+            indentacion++;
+            agregarNodo("Condición: " + whileMatcher.group(1));
+            String bloqueWhile = extraerBloque(codigo, whileMatcher.end());
+            analizarContenidoMetodo(bloqueWhile);
+            indentacion--;
+        }
+    }
+
+    private String extraerBloque(String codigo, int inicio) {
+        int nivel = 0;
+        int fin = inicio;
+        boolean encontroInicio = false;
+        
+        for (int i = inicio; i < codigo.length(); i++) {
+            char c = codigo.charAt(i);
+            if (c == '{') {
+                nivel++;
+                encontroInicio = true;
+            }
+            if (c == '}') {
+                nivel--;
+                if (nivel == 0 && encontroInicio) {
+                    fin = i;
+                    break;
                 }
             }
         }
-
-        if (esClase && (!metodos.isEmpty() || !atributos.isEmpty())) {
-            return arbol.toString();
-        } else if (esClase) {
-            return arbol.toString() + "La clase no contiene métodos ni atributos detectados.\n";
-        } else if (!metodos.isEmpty()) {
-            return arbol.toString();
-        } else {
-            return "El código no sigue una estructura reconocida de clase, método o variable en Java.";
-        }
+        return codigo.substring(inicio, fin);
     }
 
-    // Ayuda: verifica si la posición está dentro de un método (muy básico)
-    private boolean estaDentroDeMetodo(String cuerpoClase, int pos) {
+    private boolean estaDentroDeMetodo(String codigo, int pos) {
         int nivel = 0;
         for (int i = 0; i < pos; i++) {
-            char c = cuerpoClase.charAt(i);
+            char c = codigo.charAt(i);
             if (c == '{') nivel++;
             if (c == '}') nivel--;
         }
         return nivel > 0;
-    }
-
-    // Ayuda: encuentra el fin del bloque de llaves desde una posición inicial
-    private int encontrarFinDeBloque(String texto, int inicio) {
-        int nivel = 0;
-        for (int i = inicio; i < texto.length(); i++) {
-            char c = texto.charAt(i);
-            if (c == '{') nivel++;
-            if (c == '}') {
-                nivel--;
-                if (nivel == 0) return i;
-            }
-        }
-        return texto.length();
     }
 }
