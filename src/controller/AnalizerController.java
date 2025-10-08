@@ -8,6 +8,6 @@ public class AnalizerController {
     // Método para iniciar el análisis y retornar el resultado
     public String iniciarAnalisis(String codigoFuente) {
         modelo = new SintaxisAnalizer(codigoFuente);
-        return modelo.analizar();
+        return modelo.analizar(codigoFuente);
     }
 }

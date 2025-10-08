@@ -28,8 +28,8 @@ public class AnalizerView {
         System.out.println(resultado);
 
         // Muestra cada carácter del código fuente
-        System.out.println("Análisis carácter por carácter:");
+        /*System.out.println("Análisis carácter por carácter:");
         SintaxisAnalizer analizador = new SintaxisAnalizer(codigo);
-        System.out.println(analizador.mostrarCaracterPorCaracter());
+        System.out.println(analizador.mostrarCaracterPorCaracter());*/
     }
 }
