@@ -20,7 +20,7 @@ public class AnalizerView extends JFrame {
     }
     
     private void inicializarInterfaz() {
-        setTitle("Analizador Sintáctico - Java");
+        setTitle("Analizador Sintáctico - Java/Español");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
         
@@ -63,7 +63,7 @@ public class AnalizerView extends JFrame {
     
     private JPanel crearPanelEntrada() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(new TitledBorder("Código Java a Analizar"));
+        panel.setBorder(new TitledBorder("Código a Analizar (Java o Español)"));
         panel.setPreferredSize(new Dimension(0, 200));
         
         areaEntrada = new JTextArea(8, 50);
@@ -72,16 +72,15 @@ public class AnalizerView extends JFrame {
         areaEntrada.setWrapStyleWord(true);
         areaEntrada.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         
-        // Texto de ejemplo
-        areaEntrada.setText("public class Ejemplo {\n" +
-                           "    private int numero = 10;\n" +
-                           "    \n" +
-                           "    public void metodo() {\n" +
-                           "        if (numero > 5) {\n" +
-                           "            System.out.println(\"Mayor que 5\");\n" +
-                           "        }\n" +
-                           "    }\n" +
-                           "}");
+        // Texto de ejemplo (modo español)
+        areaEntrada.setText("mientras x < 10 hacer\n" +
+                           "   si y == 0 entonces\n" +
+                           "       y = y + 1\n" +
+                           "   sino\n" +
+                           "       y = y - 1\n" +
+                           "   finsi\n" +
+                           "   x = x + 1\n" +
+                           "finmientras\n");
         
         JScrollPane scrollEntrada = new JScrollPane(areaEntrada);
         scrollEntrada.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
@@ -174,7 +173,7 @@ public class AnalizerView extends JFrame {
         
         if (codigo.isEmpty()) {
             JOptionPane.showMessageDialog(this, 
-                "Por favor, ingrese código Java para analizar.", 
+                "Por favor, ingrese código para analizar (Java o Español).", 
                 "Error", 
                 JOptionPane.WARNING_MESSAGE);
             return;
