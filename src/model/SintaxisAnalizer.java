@@ -1,4 +1,5 @@
 import java.util.regex.*;
+import java.util.*;
 
 public class SintaxisAnalizer {
     // Patrones para cada componente del lenguaje
@@ -9,6 +10,15 @@ public class SintaxisAnalizer {
     private static final Pattern ELSE_PATTERN = Pattern.compile("\\}\\s*else\\s*\\{");
     private static final Pattern FOR_PATTERN = Pattern.compile("for\\s*\\(([^)]+)\\)\\s*\\{");
     private static final Pattern WHILE_PATTERN = Pattern.compile("while\\s*\\(([^)]+)\\)\\s*\\{");
+
+    // Palabras clave del modo español (subset de GLC propuesta)
+    private static final String KW_SI = "si";
+    private static final String KW_ENTONCES = "entonces";
+    private static final String KW_SINO = "sino";
+    private static final String KW_FINSI = "finsi";
+    private static final String KW_MIENTRAS = "mientras";
+    private static final String KW_HACER = "hacer";
+    private static final String KW_FINMIENTRAS = "finmientras";
 
     private String codigoFuente;
     private StringBuilder arbol;
@@ -44,16 +54,191 @@ public class SintaxisAnalizer {
         agregarNodo("Programa");
         indentacion++;
         
-        // Analizar el tipo de programa
-        if (codigoFuente.contains("class")) {
-            analizarClase(codigoFuente);
-        } else if (codigoFuente.contains("(")) {
-            analizarMetodo(codigoFuente);
+        // Modo: detectar español vs Java (heurística simple)
+        if (esCodigoEspanol(codigoFuente)) {
+            analizarProgramaEspanol(codigoFuente);
         } else {
-            analizarDeclaraciones(codigoFuente);
+            // Analizar el tipo de programa Java
+            if (codigoFuente.contains("class")) {
+                analizarClase(codigoFuente);
+            } else if (codigoFuente.contains("(")) {
+                analizarMetodo(codigoFuente);
+            } else {
+                analizarDeclaraciones(codigoFuente);
+            }
         }
         
         return arbol.toString();
+    }
+
+    private boolean esCodigoEspanol(String codigo) {
+        String lower = codigo.toLowerCase(Locale.ROOT);
+        int hits = 0;
+        if (lower.contains(KW_SI)) hits++;
+        if (lower.contains(KW_ENTONCES)) hits++;
+        if (lower.contains(KW_SINO)) hits++;
+        if (lower.contains(KW_FINSI)) hits++;
+        if (lower.contains(KW_MIENTRAS)) hits++;
+        if (lower.contains(KW_HACER)) hits++;
+        if (lower.contains(KW_FINMIENTRAS)) hits++;
+        // Considerar español si hay al menos dos palabras clave del subset
+        return hits >= 2 && !lower.contains("class") && !lower.contains("public") && !lower.contains("if (") && !lower.contains("while (");
+    }
+
+    // ============== Analizador simple para el subset en español ==============
+    private void analizarProgramaEspanol(String codigo) {
+        // Tokenizar por líneas para simular bloques con palabras de inicio/fin
+        List<String> lineas = dividirEnLineasNoVacias(codigo);
+        int index = 0;
+        while (index < lineas.size()) {
+            String linea = lineas.get(index).trim();
+            if (linea.isEmpty()) { index++; continue; }
+            if (empiezaConPalabra(linea, KW_MIENTRAS)) {
+                index = analizarMientras(lineas, index);
+                continue;
+            }
+            if (empiezaConPalabra(linea, KW_SI)) {
+                index = analizarSi(lineas, index);
+                continue;
+            }
+            // Asignación simple: identificador = expresión
+            if (linea.matches("[a-zA-Z_][a-zA-Z0-9_]*\\s*=.+")) {
+                agregarNodo("Asignación: " + linea);
+                index++;
+                continue;
+            }
+            // Si no reconocible, reportar como sentencia genérica
+            agregarNodo("Sentencia: " + linea);
+            index++;
+        }
+        indentacion--;
+    }
+
+    private int analizarMientras(List<String> lineas, int inicio) {
+        String cabecera = lineas.get(inicio).trim();
+        // Formato esperado: mientras CONDICION hacer
+        agregarNodo("Mientras");
+        indentacion++;
+        String condicion = extraerEntrePalabras(cabecera, KW_MIENTRAS, KW_HACER);
+        agregarNodo("Condición: " + (condicion.isEmpty() ? "<vacía>" : condicion.trim()));
+        // Buscar bloque hasta finmientras
+        int i = inicio + 1;
+        agregarNodo("Bloque");
+        indentacion++;
+        while (i < lineas.size()) {
+            String linea = lineas.get(i).trim();
+            if (empiezaConPalabra(linea, KW_FINMIENTRAS)) {
+                break;
+            }
+            // Reingresar para anidar estructuras
+            if (empiezaConPalabra(linea, KW_SI)) {
+                i = analizarSi(lineas, i);
+                continue;
+            }
+            if (empiezaConPalabra(linea, KW_MIENTRAS)) {
+                i = analizarMientras(lineas, i);
+                continue;
+            }
+            if (linea.matches("[a-zA-Z_][a-zA-Z0-9_]*\\s*=.+")) {
+                agregarNodo("Asignación: " + linea);
+            } else {
+                agregarNodo("Sentencia: " + linea);
+            }
+            i++;
+        }
+        indentacion--; // fin Bloque
+        indentacion--; // fin Mientras
+        return Math.min(i + 1, lineas.size());
+    }
+
+    private int analizarSi(List<String> lineas, int inicio) {
+        String cabecera = lineas.get(inicio).trim();
+        // Formato esperado: si CONDICION entonces
+        agregarNodo("Si");
+        indentacion++;
+        String condicion = extraerEntrePalabras(cabecera, KW_SI, KW_ENTONCES);
+        agregarNodo("Condición: " + (condicion.isEmpty() ? "<vacía>" : condicion.trim()));
+        // then-bloque
+        agregarNodo("Entonces");
+        indentacion++;
+        int i = inicio + 1;
+        while (i < lineas.size()) {
+            String linea = lineas.get(i).trim();
+            if (empiezaConPalabra(linea, KW_SINO) || empiezaConPalabra(linea, KW_FINSI)) {
+                break;
+            }
+            if (empiezaConPalabra(linea, KW_SI)) {
+                i = analizarSi(lineas, i);
+                continue;
+            }
+            if (empiezaConPalabra(linea, KW_MIENTRAS)) {
+                i = analizarMientras(lineas, i);
+                continue;
+            }
+            if (linea.matches("[a-zA-Z_][a-zA-Z0-9_]*\\s*=.+")) {
+                agregarNodo("Asignación: " + linea);
+            } else {
+                agregarNodo("Sentencia: " + linea);
+            }
+            i++;
+        }
+        indentacion--; // fin entonces
+
+        // else-bloque opcional
+        if (i < lineas.size() && empiezaConPalabra(lineas.get(i).trim(), KW_SINO)) {
+            agregarNodo("Sino");
+            indentacion++;
+            i++;
+            while (i < lineas.size()) {
+                String linea = lineas.get(i).trim();
+                if (empiezaConPalabra(linea, KW_FINSI)) {
+                    break;
+                }
+                if (empiezaConPalabra(linea, KW_SI)) {
+                    i = analizarSi(lineas, i);
+                    continue;
+                }
+                if (empiezaConPalabra(linea, KW_MIENTRAS)) {
+                    i = analizarMientras(lineas, i);
+                    continue;
+                }
+                if (linea.matches("[a-zA-Z_][a-zA-Z0-9_]*\\s*=.+")) {
+                    agregarNodo("Asignación: " + linea);
+                } else {
+                    agregarNodo("Sentencia: " + linea);
+                }
+                i++;
+            }
+            indentacion--; // fin sino
+        }
+        indentacion--; // fin si
+        // Consumir finsi si presente
+        if (i < lineas.size() && empiezaConPalabra(lineas.get(i).trim(), KW_FINSI)) {
+            i++;
+        }
+        return i;
+    }
+
+    private List<String> dividirEnLineasNoVacias(String codigo) {
+        String[] raw = codigo.replace("\r", "").split("\n");
+        List<String> out = new ArrayList<>();
+        for (String s : raw) {
+            out.add(s);
+        }
+        return out;
+    }
+
+    private boolean empiezaConPalabra(String linea, String palabra) {
+        String l = linea.toLowerCase(Locale.ROOT);
+        return l.startsWith(palabra + " ") || l.equals(palabra);
+    }
+
+    private String extraerEntrePalabras(String linea, String ini, String fin) {
+        String l = linea.toLowerCase(Locale.ROOT);
+        int i = l.indexOf(ini);
+        int j = l.lastIndexOf(fin);
+        if (i == -1 || j == -1 || j <= i) return "";
+        return linea.substring(i + ini.length(), j);
     }
 
     private void analizarClase(String codigo) {
